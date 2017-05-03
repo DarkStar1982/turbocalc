@@ -1,7 +1,8 @@
-#!/Users/dark/anaconda/bin/python
+import sys, getopt
+import json
 from math import sqrt,log
 
-# constants
+# global constants
 R = 287.06 # Specific gas constant
 Rho = 1.225 # Air density at sea level, kg/m^3
 LHV = 4.31E7 # Kerosene lower heating value, J/kg
@@ -274,7 +275,26 @@ def compute_engine(component_data):
         print ("\tNet thrust: %3.2f kN" % (sum(thrusts)/1000))
         print ("\tSFC is %3.3f kg/s/kN" % (fuel_flow/(sum(thrusts)/1000)))
 
-print('hello')
-# plot_cycle_charts(t1,t2,t3,t4,p1,p2,p3,p4)
-#compute_engine(ENGINE_1, OPTIONS)
-compute_engine(ENGINE_6)
+def load_json_file(filename):
+    f = open(filename, "r")
+    str_value  = f.read()
+    json_object = json.loads(str_value)
+    return json_object
+
+def main(argv):
+    inputfile =""
+    try:
+        opts, args = getopt.getopt(argv,"hi:",["ifile="])
+    except getopt.GetoptError:
+        print ('turbocalc.py -i <inputfile>')
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print('turbocalc.py -i <inputfile>')
+            sys.exit()
+        elif opt in ("-i", "--ifile"):
+            inputfile = arg
+            engine_data = load_json_file(inputfile)
+            compute_engine(engine_data)
+
+main(sys.argv[1:])
