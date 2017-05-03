@@ -1,0 +1,50 @@
+[
+    {
+        "ID":"INTAKE",
+        "TYPE":"INTAKE",
+        "MFLOW_TOTAL": 400,
+        "P_INTAKE": 101000,
+        "T_INTAKE": 288,
+        "P_LOSS":0.0
+    },
+    {
+        "ID":"LPC",
+        "TYPE":"COMPRESSOR",
+        "PR":4,
+        "EFF":0.88
+    },
+    {
+        "ID":"INTERCOOLER",
+        "TYPE":"INTERCOOLER",
+        "EFF":1.0,
+        "T_COLD":300,
+        "P_LOSS":0.03
+    },
+    {
+        "ID":"HPC",
+        "TYPE":"COMPRESSOR",
+        "PR":10,
+        "EFF":0.88
+    },
+    {
+        "ID":"RECUPERATOR",
+        "TYPE":"RECUPERATOR",
+        "EFF":0.95,
+        "P_LOSS":0.05,
+        "INPUT_SOURCE":"HPC",
+        "HEAT_SOURCE":"HPT"
+    },
+    {
+        "ID":"COMBUSTOR",
+        "TYPE":"COMBUSTOR",
+        "TET":1700,
+        "P_LOSS":0.05
+    },
+    {
+        "ID":"HPT",
+        "TYPE":"POWER_TURBINE",
+        "W_MATCH":["HPC","LPC"],
+        "M_EXIT":0.05,
+        "EFF":0.88
+    }
+]
