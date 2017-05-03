@@ -1,0 +1,29 @@
+[
+    {
+        "ID":"INTAKE",
+        "TYPE":"INTAKE",
+        "MFLOW_TOTAL": 826,
+        "P_INTAKE": 101325,
+        "T_INTAKE": 288,
+        "P_LOSS":0.01
+    },
+    {
+        "ID":"HPC",
+        "TYPE":"COMPRESSOR",
+        "PR":21.8,
+        "EFF":0.79
+    },
+    {
+        "ID":"COMBUSTOR",
+        "TYPE":"COMBUSTOR",
+        "TET":1690,
+        "P_LOSS":0.05
+    },
+    {
+        "ID":"HPT",
+        "TYPE":"POWER_TURBINE",
+        "W_MATCH":["HPC"],
+        "M_EXIT":0.05,
+        "EFF":0.82
+    },
+]

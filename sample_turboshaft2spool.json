@@ -1,0 +1,41 @@
+[
+    {
+        "ID":"INTAKE",
+        "TYPE":"INTAKE",
+        "MFLOW_TOTAL": 70.5,
+        "P_INTAKE": 101325,
+        "T_INTAKE": 300,
+        "P_LOSS":0.01
+    },
+    {
+        "ID":"LPC",
+        "TYPE":"COMPRESSOR",
+        "PR":4,
+        "EFF":0.88
+    },
+    {
+        "ID":"HPC",
+        "TYPE":"COMPRESSOR",
+        "PR":5,
+        "EFF":0.88
+    },
+    {
+        "ID":"COMBUSTOR",
+        "TYPE":"COMBUSTOR",
+        "TET":1500,
+        "P_LOSS":0.01
+    },
+    {
+        "ID":"HPT",
+        "TYPE":"TURBINE",
+        "W_MATCH":["HPC"],
+        "EFF":0.92
+    },
+    {
+        "ID":"LPT",
+        "TYPE":"POWER_TURBINE",
+        "W_MATCH":["LPC"],
+        "M_EXIT":0.05,
+        "EFF":0.92
+    },
+]
