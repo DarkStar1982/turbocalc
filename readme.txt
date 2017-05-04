@@ -9,3 +9,4 @@ from a simple turbojet to a multi-spool turbofan, turboshaft or a power generati
 -Add compressor and turbine detailed calculations
 -Calculate combustor losses
 -Add graphical output (charts)
+-Calculate intake drag and area

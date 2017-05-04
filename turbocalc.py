@@ -86,7 +86,133 @@ def compressor_stage(T_in, P_in, PR, N_eff):
     P = P_in*PR
     return (T,P)
 
+def compute_intake(item,stations):
+    T_amb = item['T_INTAKE']
+    P_amb = item['P_INTAKE']
+    mass_flow = item['MFLOW_TOTAL']
+    total_flow = mass_flow
+    stations.extend([
+        {
+            'ID':'ENTRY',
+            'T':item['T_INTAKE'],
+            'P':item['P_INTAKE']
+        },
+        {
+            'ID':item['ID'],
+            'T':item['T_INTAKE'],
+            'P':item['P_INTAKE']*(1-item['P_LOSS'])
+        }
+    ])
+    return (T_amb,P_amb,mass_flow,total_flow)
+
+def compute_fan(item,stations,works,thrusts,energies,mass_flow,p_ambient):
+    engine_class = "TURBOFAN"
+    T_in = stations[-1]['T']
+    P_in = stations[-1]['P']
+    T_out, P_out = compressor_stage(T_in,P_in,item['FPR'],item['EFF'])
+    works[item['ID']]=cp_calc(T_in)*(T_out - T_in)*mass_flow
+    #split the air flow after fan exit
+    mass_flow = mass_flow/(item['BPR']+1)
+    fan_flow = mass_flow*item['BPR']
+    print('FAN:')
+    fan_thrust = converging_nozzle_thrust(T_out,P_out,p_ambient,fan_flow)
+    thrusts.append(fan_thrust['THRUST'])
+    energies.append((fan_flow*fan_thrust['V_EXIT']**2)/2)
+    stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
+    return (engine_class,mass_flow,fan_flow)
+
+def compute_compressor(item,stations,works,mass_flow):
+    T_in = stations[-1]['T']
+    P_in = stations[-1]['P']
+    T_out, P_out = compressor_stage(T_in,P_in,item['PR'],item['EFF'])
+    works[item['ID']]=cp_calc(T_in)*(T_out - T_in)*mass_flow
+    stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
+
+def compute_intercooler(item,stations):
+    T_in = stations[-1]['T']
+    P_in = stations[-1]['P']
+    T_out, P_out = heat_exchanger(T_in, P_in, item['T_COLD'], item['P_LOSS'], item['EFF'])
+    stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
+
+def compute_recuperator_ploss(item,stations):
+    T_in = stations[-1]['T']
+    P_in = stations[-1]['P']
+    p_loss =  item['P_LOSS']
+    T_out = T_in
+    P_out = P_in*(1-p_loss)
+    stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
+
+def compute_recuperator(item,stations):
+    n_eff = item['EFF']
+    p_loss = item['P_LOSS']
+    index = -1
+    for x in stations:
+        if x['ID'] == item['INPUT_SOURCE']:
+            index = stations.index(x)
+        if x['ID'] == item['HEAT_SOURCE']:
+            T_source = x['T']
+    T_in = stations[index]['T']
+    P_in = stations[index]['P']
+    T_out, P_out = heat_exchanger(T_in, P_in, T_source, p_loss, n_eff)
+    index = index + 1
+    stations = stations[:index]
+    stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
+    return stations
+
+def compute_combustor(item,stations,mass_flow,total_flow):
+    P_in = stations[-1]['P']
+    T_in = stations[-1]['T']
+    T_out = item['TET']
+    Q_in = cp_calc(T_out)*(T_out - T_in)*mass_flow
+    fuel_flow = Q_in/LHV
+    mass_flow = mass_flow + fuel_flow
+    total_flow = total_flow + fuel_flow
+    stations.append({'ID':item['ID'],'T':T_out,'P':P_in*(1-item['P_LOSS'])})
+    return (Q_in,mass_flow,fuel_flow,total_flow)
+
+def compute_turbine(item,stations,works,mass_flow):
+    T_in = stations[-1]['T']
+    P_in = stations[-1]['P']
+    cp_turb = cp_calc(T_in)
+    y = gamma_calc(T_in)
+    # match the turbine to corresponding compressor
+    W_t = 0
+    for x in item['W_MATCH']:
+        W_t = W_t + works[x]
+    T_out = T_in - W_t/(cp_turb*mass_flow)
+    T_out_is = T_in-(T_in-T_out)/item['EFF']
+    P_out = P_in / ((T_in/T_out_is)**(y/(y-1)))
+    stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
+
+def compute_power_turbine(item,stations,works,t_ambient,mass_flow,p_ambient):
+    engine_class = "TURBOSHAFT"
+    T_in = stations[-1]['T']
+    P_in = stations[-1]['P']
+    cp_turb = cp_calc(T_in)
+    M_exit = item['M_EXIT']
+    y = gamma_calc(t_ambient)
+    P_out = p_ambient*(1+(y-1)/2*M_exit**2)**(y/(y-1));
+    T_out_is = T_in*(P_in/P_out)**((1-y)/y);
+    T_out = T_in - (T_in-T_out_is)*item['EFF'];
+    # subtract the residual work from net work
+    W_net = (T_in-T_out)*cp_turb*mass_flow;
+    for x in item['W_MATCH']:
+        W_net = W_net - works[x]
+    stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
+    return (engine_class,W_net)
+
+def compute_nozzle(item,stations,energies,thrusts,mass_flow,p_ambient):
+    T_in = stations[-1]['T']
+    P_in = stations[-1]['P']
+    T_out = T_in
+    P_out = P_in*(1-item['P_LOSS'])
+    print('CORE:')
+    core_thrust = converging_nozzle_thrust(T_out,P_out,p_ambient,mass_flow)
+    energies.append((mass_flow*core_thrust['V_EXIT']**2)/2)
+    thrusts.append(core_thrust['THRUST'])
+
 def compute_engine(component_data):
+    # computed values
     works = {}
     thrusts = []
     energies = []
@@ -97,168 +223,40 @@ def compute_engine(component_data):
     fuel_flow = 0.0
     engine_class = "TURBOJET"
     second_pass = False
-    P_amb = 0
-    T_amb = 0
+    P_amb = 0.0
+    T_amb = 0.0
     W_net = 0.0
     F_net = 0.0
     Q_in = 0.0
     for item in component_data:
         if item['TYPE'] == 'INTAKE':
-            T_amb = item['T_INTAKE']
-            P_amb = item['P_INTAKE']
-            mass_flow = item['MFLOW_TOTAL']
-            total_flow = mass_flow
-            stations.extend([
-                {
-                    'ID':'ENTRY',
-                    'T':item['T_INTAKE'],
-                    'P':item['P_INTAKE']
-                },
-                {
-                    'ID':item['ID'],
-                    'T':item['T_INTAKE'],
-                    'P':item['P_INTAKE']*(1-item['P_LOSS'])
-                }
-            ])
-            index = index+1
+            T_amb,P_amb,mass_flow,total_flow = compute_intake(item,stations)
         if item['TYPE'] == 'FAN':
-            engine_class = "TURBOFAN"
-            T_in = stations[index]['T']
-            P_in = stations[index]['P']
-            T_out, P_out = compressor_stage(T_in,P_in,item['FPR'],item['EFF'])
-            works[item['ID']]=cp_calc(T_in)*(T_out - T_in)*mass_flow
-            #split the air flow after fan exit
-            mass_flow = mass_flow/(item['BPR']+1)
-            fan_flow = mass_flow*item['BPR']
-            print('FAN:')
-            fan_thrust = converging_nozzle_thrust(T_out,P_out,P_amb,fan_flow)
-            thrusts.append(fan_thrust['THRUST'])
-            energies.append((fan_flow*fan_thrust['V_EXIT']**2)/2)
-            stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
-            index = index + 1
+            engine_class,mass_flow,fan_flow = compute_fan(item,stations,works,thrusts,energies,mass_flow,P_amb)
         if item['TYPE'] == 'COMPRESSOR':
-            T_in = stations[index]['T']
-            P_in = stations[index]['P']
-            T_out, P_out = compressor_stage(T_in,P_in,item['PR'],item['EFF'])
-            works[item['ID']]=cp_calc(T_in)*(T_out - T_in)*mass_flow
-            stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
-            index = index + 1
+            compute_compressor(item,stations,works,mass_flow)
         if item['TYPE'] == 'INTERCOOLER':
-            T_in = stations[index]['T']
-            P_in = stations[index]['P']
-            T_out, P_out = heat_exchanger(T_in, P_in, item['T_COLD'], item['P_LOSS'], item['EFF'])
-            stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
-            index = index + 1
+            compute_intercooler(item,stations)
         if item['TYPE'] == 'RECUPERATOR':
-            # first pass - pressure loss only
-            T_in = stations[index]['T']
-            P_in = stations[index]['P']
-            p_loss =  item['P_LOSS']
-            T_out = T_in
-            P_out = P_out*(1-p_loss)
-            stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
-            index = index + 1
+            compute_recuperator_ploss(item,stations) # first pass - pressure loss only
             second_pass = True
         if item['TYPE'] == 'COMBUSTOR':
-            P_in = stations[index]['P']
-            T_in = stations[index]['T']
-            T_out = item['TET']
-            Q_in = cp_calc(T_out)*(T_out - T_in)*mass_flow
-            fuel_flow = Q_in/LHV
-            mass_flow = mass_flow + fuel_flow
-            total_flow = total_flow + fuel_flow
-            stations.append({'ID':item['ID'],'T':T_out,'P':P_out*(1-item['P_LOSS'])})
-            index = index + 1
+            Q_in,mass_flow,fuel_flow,total_flow = compute_combustor(item,stations,mass_flow,total_flow)
         if item['TYPE'] == 'TURBINE':
-            T_in = stations[index]['T']
-            P_in = stations[index]['P']
-            cp_turb = cp_calc(T_in)
-            y = gamma_calc(T_in)
-            # match the turbine to corresponding compressor
-            W_t = 0
-            for x in item['W_MATCH']:
-                W_t = W_t + works[x]
-            T_out = T_in - W_t/(cp_turb*mass_flow)
-            T_out_is = T_in-(T_in-T_out)/item['EFF']
-            P_out = P_in / ((T_in/T_out_is)**(y/(y-1)))
-
-            stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
-            index = index + 1
-
+            compute_turbine(item,stations,works,mass_flow)
         if item['TYPE'] == 'POWER_TURBINE':
-            engine_class = "TURBOSHAFT"
-            T_in = stations[index]['T']
-            P_in = stations[index]['P']
-            cp_turb = cp_calc(T_in)
-            M_exit = item['M_EXIT']
-            y = gamma_calc(T_amb)
-            P_out = P_amb*(1+(y-1)/2*M_exit**2)**(y/(y-1));
-            T_out_is = T_in*(P_in/P_out)**((1-y)/y);
-            T_out = T_in - (T_in-T_out_is)*item['EFF'];
-            # subtract the residual work from net work
-            W_net = (T_in-T_out)*cp_turb*mass_flow;
-            for x in item['W_MATCH']:
-                W_net = W_net - works[x]
-            stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
-            index = index +1
+            engine_class,W_net = compute_power_turbine(item,stations,works,T_amb,mass_flow,P_amb)
         if item['TYPE'] == 'NOZZLE':
-            T_in = stations[index]['T']
-            P_in = stations[index]['P']
-            T_out = T_in
-            P_out = P_in*(1-item['P_LOSS'])
-            print('CORE:')
-            core_thrust = converging_nozzle_thrust(T_out,P_out,P_amb,mass_flow)
-            energies.append((mass_flow*core_thrust['V_EXIT']**2)/2)
-            thrusts.append(core_thrust['THRUST'])
-
+            compute_nozzle(item,stations,energies,thrusts,mass_flow,P_amb)
     # second pass for recuperator calculation
     if second_pass:
         for item in component_data:
             if item['TYPE'] == 'RECUPERATOR':
-                n_eff = item['EFF']
-                p_loss = item['P_LOSS']
-                index = -1
-                for x in stations:
-                    if x['ID'] == item['INPUT_SOURCE']:
-                        index = stations.index(x)
-                    if x['ID'] == item['HEAT_SOURCE']:
-                        T_source = x['T']
-                T_in = stations[index]['T']
-                P_in = stations[index]['P']
-                T_out, P_out = heat_exchanger(T_in, P_in, T_source, p_loss, n_eff)
-                index = index + 1
-                stations = stations[:index]
-                stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
-
+                stations = compute_recuperator(item,stations)
             if item['TYPE'] == 'COMBUSTOR':
-                P_in = stations[index]['P']
-                T_in = stations[index]['T']
-                T_out = item['TET']
-                Q_in = cp_calc(T_out)*(T_out - T_in)*mass_flow
-                fuel_flow = Q_in/LHV
-                mass_flow = mass_flow + fuel_flow
-                total_flow = total_flow + fuel_flow
-                stations.append({'ID':item['ID'],'T':T_out,'P':P_out*(1-item['P_LOSS'])})
-                index = index + 1
-
+                Q_in,mass_flow,fuel_flow,total_flow = compute_combustor(item,stations,mass_flow,total_flow)
             if item['TYPE'] == 'POWER_TURBINE':
-                T_in = stations[index]['T']
-                P_in = stations[index]['P']
-                cp_turb = cp_calc(T_in)
-                M_exit = item['M_EXIT']
-                y = gamma_calc(T_amb)
-
-                P_out = P_amb*(1+(y-1)/2*M_exit**2)**(y/(y-1));
-                T_out_is = T_in*(P_in/P_out)**((1-y)/y);
-                T_out = T_in - (T_in-T_out_is)*item['EFF'];
-
-                # subtract the residual work from net work
-                W_net = (T_in-T_out)*cp_turb*mass_flow;
-                for x in item['W_MATCH']:
-                    W_net = W_net - works[x]
-
-                stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
-                index = index +1
+                engine_class,W_net = compute_power_turbine(item,stations,works,T_amb,mass_flow,P_amb)
     # print report
     print ('SUMMARY:')
     #for item in stations:
