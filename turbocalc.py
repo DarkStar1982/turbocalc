@@ -42,7 +42,8 @@ engine_data = {
     "net_work": 0.0,
     "net_thrust": 0.0,
     "net_heat": 0.0,
-    "engine_class": "TURBOJET"
+    "engine_class": "TURBOJET",
+    "comments":""
 }
 
 def interpolate(t,TABLE):
@@ -80,8 +81,6 @@ def converging_nozzle_thrust(t,p,p_amb,mflow):
     u = sqrt(y*t_out*R)
     area = mflow/(density*u*mach_no)
     f = mflow*u*mach_no+(p_out-p_amb)*area
-    print("\tNozzle area is %3.2f m^2" % area)
-    print("\tExit Mach number is %3.2f" % mach_no)
     return {'AREA_NOZZLE':area,'EXIT_P':p_out,'MACH_NO':mach_no, 'V_EXIT':u,'THRUST':f }
 
 def plot_cycle_charts(t1,t2,t3,t4,p1,p2,p3,p4):
@@ -134,8 +133,12 @@ def compute_fan(item,engine_data):
     #split the air flow after fan exit
     engine_data["mass_flow"] = engine_data["mass_flow"]/(item['BPR']+1)
     fan_flow = engine_data["mass_flow"]*item['BPR']
-    print('FAN:')
+    engine_data["comments"]="%s%s" % (engine_data["comments"],"FAN:\n")
     fan_thrust = converging_nozzle_thrust(T_out,P_out,p_ambient,fan_flow)
+    area = fan_thrust['AREA_NOZZLE']
+    mach_no = fan_thrust['MACH_NO']
+    engine_data["comments"]="%s%s" % (engine_data["comments"],("\tNozzle area is %3.2f m^2\n" % area))
+    engine_data["comments"]="%s%s" % (engine_data["comments"],("\tExit Mach number is %3.2f\n" % mach_no))
     engine_data["thrusts"].append(fan_thrust['THRUST'])
     engine_data["energies"].append((fan_flow*fan_thrust['V_EXIT']**2)/2)
     stations.append({'ID':item['ID'],'T':T_out,'P':P_out})
@@ -242,13 +245,19 @@ def compute_nozzle(item,engine_data):
     P_in = stations[-1]['P']
     T_out = T_in
     P_out = P_in*(1-item['P_LOSS'])
-    print('CORE:')
+    engine_data["comments"]="%s%s\n" % (engine_data["comments"],'CORE:')
     core_thrust = converging_nozzle_thrust(T_out,P_out,engine_data["p_ambient"],engine_data["mass_flow"])
+    area = core_thrust['AREA_NOZZLE']
+    mach_no = core_thrust['MACH_NO']
+    engine_data["comments"]="%s%s" % (engine_data["comments"],("\tNozzle area is %3.2f m^2\n" % area))
+    engine_data["comments"]="%s%s" % (engine_data["comments"],("\tExit Mach number is %3.2f" % mach_no))
+
     engine_data["energies"].append((engine_data["mass_flow"]*core_thrust['V_EXIT']**2)/2)
     engine_data["thrusts"].append(core_thrust['THRUST'])
     return engine_data
 
 def produce_report(engine_data):
+    print(engine_data["comments"])
     print("STATIONS:")
     for item in engine_data["stations"]:
         print("\t%s" % item)
@@ -270,7 +279,7 @@ def produce_report(engine_data):
     else:
         print ("\tThermal efficiency: %3.2f%%" % (sum(energies)*100/Q_in))
         print ("\tNet thrust: %3.2f kN" % (sum(thrusts)/1000))
-        print ("\tSFC is %3.3f kg/s/kN" % (engine_data["fuel_flow"]/(sum(thrusts)/1000)))
+        print ("\tSFC is %3.3f kg/kN-s" % (engine_data["fuel_flow"]/(sum(thrusts)/1000)))
 
 def compute_engine(component_data, engine_data):
     second_pass = False
