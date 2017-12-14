@@ -83,18 +83,6 @@ def converging_nozzle_thrust(t,p,p_amb,mflow):
     f = mflow*u*mach_no+(p_out-p_amb)*area
     return {'AREA_NOZZLE':area,'EXIT_P':p_out,'MACH_NO':mach_no, 'V_EXIT':u,'THRUST':f }
 
-def plot_cycle_charts(t1,t2,t3,t4,p1,p2,p3,p4):
-    # plot T-E cycle chart
-    deltaS_12 = cp_calc(t1)*log(t2/t1) - R*log(p2/p1);
-    deltaS_23 = deltaS_12 + cp_calc(t2)*log(t3/t2) - R*log(p3/p2);
-    deltaS_34 = deltaS_23 + cp_calc(t3)*log(t4/t3) - R*log(1/(p3/p4));
-    plt.plot([0,deltaS_12, deltaS_23, deltaS_34,0],[t1,t2,t3,t4,t1])
-    plt.xlabel('Entropy')
-    plt.ylabel('Temperature, K')
-    plt.title('T-E Brayton cycle chart')
-    plt.grid(True)
-    plt.show()
-
 def compressor_stage(T_in, P_in, PR, N_eff):
     y = gamma_calc(T_in)
     T_out_is = T_in*PR**((y-1)/y)
@@ -251,7 +239,6 @@ def compute_nozzle(item,engine_data):
     mach_no = core_thrust['MACH_NO']
     engine_data["comments"]="%s%s" % (engine_data["comments"],("\tNozzle area is %3.2f m^2\n" % area))
     engine_data["comments"]="%s%s" % (engine_data["comments"],("\tExit Mach number is %3.2f" % mach_no))
-
     engine_data["energies"].append((engine_data["mass_flow"]*core_thrust['V_EXIT']**2)/2)
     engine_data["thrusts"].append(core_thrust['THRUST'])
     return engine_data
